@@ -3,8 +3,15 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const puppeteer = require('puppeteer-core');
+const { createBridge, loadConfig } = require('./bridge');
+let bridge = null;
+let remotoEnviando = false;
+let localEnviando = false;
+let trocando = false;
 
-const PORTA = 3210;
+const { accountSettings } = require('./accounts');
+const ACCOUNT = accountSettings(process.env.ZAP_CONTA || '1');
+const PORTA = ACCOUNT.port;
 const WAJS = require.resolve('@wppconnect/wa-js');
 
 const CHROME = [
@@ -25,6 +32,9 @@ const estado = {
   falha: 0,
   espera: 0,
   log: [],
+  remetente: null,
+  remoto: 'nao_configurado',
+  conta: ACCOUNT.account,
 };
 
 function log(texto, tipo = 'info') {
@@ -48,7 +58,7 @@ async function abrirWhatsApp() {
     executablePath: CHROME,
     headless: false,
     defaultViewport: null,
-    userDataDir: path.join(__dirname, 'sessao'), // guarda o login, não precisa ler QR toda vez
+    userDataDir: path.join(__dirname, ACCOUNT.session),
     args: ['--start-maximized', '--disable-blink-features=AutomationControlled'],
     ignoreDefaultArgs: ['--enable-automation'],
   });
@@ -84,19 +94,41 @@ async function abrirWhatsApp() {
   }
 }
 
-async function enviar(numero, mensagem) {
+async function remetenteAtual() {
+  if (!page) return null;
+  try {
+    return await page.evaluate(() => {
+      if (!window.WPP?.isReady || !WPP.conn.isAuthenticated()) return null;
+      const id = WPP.conn.getMyUserId();
+      const serialized = id?._serialized || id?.toString();
+      if (!serialized || !/^\d+@c\.us$/.test(serialized)) return null;
+      return serialized.split('@')[0];
+    });
+  } catch { return null; }
+}
+
+async function enviar(numero, mensagem, remetente) {
   return page.evaluate(
-    async (num, msg) => {
+    async (num, msg, esperado) => {
+      const atual = () => {
+        const id = WPP.conn.getMyUserId();
+        return (id?._serialized || id?.toString() || '').split('@')[0];
+      };
+      if (!esperado || atual() !== esperado) throw new Error('Remetente alterado');
       const existe = await WPP.contact.queryExists(num + '@c.us');
       if (!existe) throw new Error('número não tem WhatsApp');
+      if (atual() !== esperado) throw new Error('Remetente alterado');
       await WPP.chat.sendTextMessage(existe.wid._serialized, msg, { createChat: true });
     },
     numero,
-    mensagem
+    mensagem,
+    remetente
   );
 }
 
 async function disparar({ lista, mensagem, min, max }) {
+  estado.rodando = true;
+  const remetente = await remetenteAtual();
   const contatos = lista
     .map((c) => ({ num: normalizar(c.num), nome: (c.nome || '').trim() }))
     .filter((c) => c.num);
@@ -110,7 +142,10 @@ async function disparar({ lista, mensagem, min, max }) {
     const { num, nome } = contatos[i];
     estado.atual = i + 1;
     try {
-      await enviar(num, mensagem.replace(/\{nome\}/gi, nome));
+      if (await remetenteAtual() !== remetente) { estado.rodando = false; break; }
+      localEnviando = true;
+      try { await enviar(num, mensagem.replace(/\{nome\}/gi, nome), remetente); }
+      finally { localEnviando = false; }
       estado.ok++;
       log(`✅ ${num}${nome ? ' (' + nome + ')' : ''} enviado`, 'ok');
     } catch (e) {
@@ -148,22 +183,56 @@ const servidor = http.createServer(async (req, res) => {
     res.end(JSON.stringify(obj));
   };
 
+  // Reject cross-origin commands to the unauthenticated local panel.
+  if (![ `localhost:${PORTA}`, `127.0.0.1:${PORTA}` ].includes(req.headers.host)) return json({erro:'Host invalido'},403);
+  if (req.method === 'POST' && (req.headers.origin && ![`http://localhost:${PORTA}`,`http://127.0.0.1:${PORTA}`].includes(req.headers.origin) || !req.headers['content-type']?.startsWith('application/json'))) return json({erro:'Origem invalida'},403);
+
   if (req.method === 'GET' && req.url === '/') {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     return res.end(fs.readFileSync(path.join(__dirname, 'painel.html')));
   }
-  if (req.method === 'GET' && req.url === '/estado') return json(estado);
+  if (req.method === 'GET' && req.url === '/estado') {
+    estado.remetente = await remetenteAtual();
+    estado.remoto = bridge ? (bridge.paused ? 'pausado' : 'liberado') : 'nao_configurado';
+    return json(estado);
+  }
+  if (req.method === 'POST' && req.url === '/remoto/ativar') {
+    if (!bridge) return json({erro:'Copie conexao.local.json para a pasta do programa.'},400);
+    if (trocando || !await remetenteAtual()) return json({erro:'Conecte o WhatsApp primeiro.'},400);
+    bridge.enable(); return json({ok:true});
+  }
+  if (req.method === 'POST' && req.url === '/remoto/pausar') {
+    bridge?.pause(); return json({ok:true});
+  }
+  if (req.method === 'POST' && req.url === '/trocar-numero') {
+    bridge?.pause();
+    estado.rodando = false;
+    if (localEnviando || remotoEnviando || bridge?.busy || trocando) return json({erro:'Controle pausado. Aguarde o envio atual terminar e tente novamente.'},409);
+    trocando = true;
+    try {
+      // The existing browser profile is kept; only WhatsApp is logged out.
+      await page.evaluate(async () => { if (!await WPP.conn.logout()) throw new Error('Logout falhou'); });
+      estado.remetente = null;
+      estado.whatsapp = 'qrcode';
+      return json({ok:true});
+    } catch { return json({erro:'Saia da conta pelo menu do WhatsApp Web e conecte o novo numero.'},400); }
+    finally { trocando = false; }
+  }
 
   if (req.method === 'POST' && req.url === '/disparar') {
     if (estado.whatsapp !== 'pronto') return json({ erro: 'WhatsApp ainda não está conectado.' }, 400);
-    if (estado.rodando) return json({ erro: 'Já existe um disparo rodando.' }, 400);
+    if (estado.rodando || remotoEnviando || bridge?.busy || trocando) return json({ erro: 'Aguarde a operacao atual.' }, 400);
     const corpo = await lerCorpo(req);
     if (!Array.isArray(corpo.lista) || !corpo.lista.length) return json({ erro: 'Nenhum número.' }, 400);
     if (!String(corpo.mensagem || '').trim()) return json({ erro: 'Escreva a mensagem.' }, 400);
-    disparar(corpo);
+    if (estado.rodando || localEnviando || remotoEnviando || bridge?.busy || trocando) return json({erro:'Aguarde a operacao atual.'},409);
+    corpo.lista = corpo.lista.filter(c => c && typeof c === 'object').map(c => ({num: String(c.num || ''),nome: String(c.nome || '')}));
+    corpo.mensagem = String(corpo.mensagem);
+    disparar(corpo).catch(e => { estado.rodando = false; log(e.message,'erro'); });
     return json({ ok: true });
   }
   if (req.method === 'POST' && req.url === '/parar') {
+    bridge?.pause();
     if (estado.rodando) {
       estado.rodando = false;
       log('Parando...', 'erro');
@@ -181,11 +250,24 @@ if (!CHROME) {
 }
 
 servidor.listen(PORTA, '127.0.0.1', () => {
+  try {
+    const config = loadConfig(ACCOUNT.config);
+    if (config) {
+      bridge = createBridge({ config, getSender: remetenteAtual,
+        available: () => !estado.rodando && !localEnviando && !remotoEnviando && !trocando && estado.whatsapp === 'pronto',
+        send: async (num, msg, sender) => {
+          remotoEnviando = true;
+          try { await enviar(num, msg, sender); } finally { remotoEnviando = false; }
+        }, report: texto => log(texto)
+      });
+      bridge.run();
+    }
+  } catch (e) { log(e.message, 'erro'); }
   console.log(`Painel em http://localhost:${PORTA}`);
   // Abre o painel numa janelinha própria, separada do WhatsApp
   spawn(CHROME, [
     `--app=http://localhost:${PORTA}`,
-    `--user-data-dir=${path.join(__dirname, 'perfil-painel')}`,
+    `--user-data-dir=${path.join(__dirname, ACCOUNT.panel)}`,
     '--window-size=520,860',
   ], { detached: true, stdio: 'ignore' }).unref();
   abrirWhatsApp().catch((e) => {

@@ -36,6 +36,13 @@
   <span id="selo" class="selo">Abrindo WhatsApp...</span>
 </header>
 <main>
+  <div id="conta">Conta: aguardando conexão</div>
+  <div id="remoto">Grok: não configurado</div>
+  <div class="botoes">
+    <button id="ativar-remoto" style="background:#075e54">Liberar Grok</button>
+    <button id="pausar-remoto" style="background:#666">Pausar Grok</button>
+    <button id="trocar-numero" style="background:#ad5700">Trocar número</button>
+  </div>
   <label>Números <span><span class="link" id="importar">Importar .txt/.csv</span> · <span id="contagem">0</span></span></label>
   <textarea id="numeros" rows="7" placeholder="Um por linha. Opcional: numero;nome&#10;11999998888;João&#10;5521988887777;Maria"></textarea>
   <input type="file" id="arquivo" accept=".txt,.csv" hidden>
@@ -101,11 +108,22 @@ $('disparar').onclick = () => {
   post('/disparar', { lista, mensagem: $('mensagem').value, min: $('min').value, max: $('max').value });
 };
 $('parar').onclick = () => post('/parar');
+$('ativar-remoto').onclick = () => {
+  if (confirm('Liberar pedidos autorizados enviados pelo Grok para esta conta?')) post('/remoto/ativar');
+};
+$('pausar-remoto').onclick = () => post('/remoto/pausar');
+$('trocar-numero').onclick = () => {
+  if (confirm('Pausar o Grok e sair da conta atual? Depois leia o QR Code com o novo número.')) post('/trocar-numero');
+};
 
 let ultimoLog = 0;
 async function atualizar() {
   try {
     const s = await (await fetch('/estado')).json();
+    document.title = 'Disparador Zap — Conta ' + (s.conta || '1');
+    document.querySelector('header h1').textContent = 'Disparador Zap — Conta ' + (s.conta || '1');
+    $('conta').textContent = 'Conta ' + (s.conta || '1') + ': ' + (s.remetente || 'desconectada');
+    $('remoto').textContent = 'Grok: ' + s.remoto;
     const selo = $('selo');
     selo.className = 'selo ' + s.whatsapp;
     selo.textContent = { iniciando: 'Abrindo WhatsApp...', qrcode: 'Leia o QR code', pronto: 'Conectado' }[s.whatsapp];

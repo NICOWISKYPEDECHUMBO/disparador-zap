@@ -1,3 +1,5 @@
-Leia o arquivo SKILL.md neste link: COLE_AQUI_O_LINK_REAL_DO_ARQUIVO_NO_GITHUB
+Atualize a skill disparador-zap para a versão de três contas no repositório. Leia skills/disparador-zap/SKILL.md e references/supabase.md; se o upload criou subpastas, localize esses arquivos pela estrutura. Use grok-client.js atualizado e accounts.js.
 
-Use esse documento e os arquivos do mesmo repositório para salvar uma skill privada chamada disparador-zap. Preserve os requisitos Windows, o servidor local em 127.0.0.1:3210, a proteção das pastas de sessão e a autorização explícita para envios. Confirme quais arquivos conseguiu ler e se a skill foi realmente salva. Se não tiver acesso ao repositório, peça os arquivos ou a conexão necessária, sem inventar seu conteúdo. Primeiro prepare ou diagnostique o projeto; não envie mensagens como teste. Informe se seu ambiente consegue executar este aplicativo Windows ou se a execução deve ocorrer no meu computador.
+Guarde o anexo grok-3-contas.local.json em local privado fora do repositório, sem imprimir os tokens. Ele substitui a configuração de conta única para coordenação das contas 1, 2 e 3.
+
+Consulte status separadamente com account:1, account:2 e account:3. Confirme o nome e o remetente de cada conta e se o heartbeat é recente. Não envie mensagens neste teste. Antes de futuras campanhas, confirme a conta, o texto e os destinatários; nunca use outra conta automaticamente se uma falhar.

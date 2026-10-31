@@ -1,30 +1,52 @@
-# Disparador Zap
+# Disparador Zap — Supabase e Grok
 
-Projeto Windows com painel local de envio de textos pelo WhatsApp Web. Código original copiado sem alterações funcionais.
+## Três contas
 
-## Executar
+Abra CONTA-1.bat, CONTA-2.bat e CONTA-3.bat para iniciar as contas desejadas. Cada conta abre seu próprio WhatsApp e painel: portas 3210, 3211 e 3212. A conta 1 mantém a sessão existente. Leia o QR Code das outras contas com os respectivos celulares. Libere o Grok separadamente em cada painel. Não use o mesmo número em mais de uma conta.
 
-Abra INICIAR.bat no Windows com Chrome ou Edge instalado. Ele prepara Node e dependências. Alternativamente, com Node instalado: execute `npm ci` e `node server.js` na raiz. O painel fica em http://localhost:3210. Autentique o WhatsApp no navegador aberto.
+Para o Grok, use agora grok-3-contas.local.json, entregue em privado fora deste pacote. Inclua account: 1, 2 ou 3 no JSON passado ao grok-client.js atualizado (ele depende de accounts.js). A configuração antiga continua válida apenas para conta 1. Consulte as três contas separadamente. O uso simultâneo exige capacidade do computador; os testes automatizados não substituem a validação dos três navegadores reais.
 
-O arquivo disparador-zap.user.js é uma alternativa independente via gerenciador de userscripts.
+Nunca publique arquivos *.local.json. O ZIP público não contém credenciais nem sessões. As contas 2 e 3 já estão cadastradas no Supabase, mas só ficam conectadas após iniciar os programas e autenticar no WhatsApp.
 
-## Skill para Grok Bot da xAI
+## Estado desta entrega
 
-Arquivo: `skills/disparador-zap/SKILL.md`.
+A API zap-bridge e as tabelas zap_devices e zap_jobs foram instaladas no projeto Supabase xdfxgldjhuzvvxyxoasv. A API exige tokens distintos para o Grok e para o worker. Os tokens ficam fora deste repositório e do ZIP público. RLS está habilitado; anon e authenticated não têm acesso às tabelas. Não há políticas para essas funções de banco porque todo acesso passa pela Edge Function, que confere o token e o dispositivo.
 
-No seu repositório existente, envie o conteúdo desta pasta preservando a estrutura. Não envie apenas o ZIP se quiser que o bot leia os arquivos diretamente. As pastas de sessão, navegador, runtime e dependências não fazem parte deste pacote.
+## No Windows
 
-Para localizar seu repositório, entre em https://github.com e abra seu perfil > Your repositories. Procure pelo nome usado ao publicar. Abra o repositório e copie a URL da barra do navegador. A pasta original não contém .git; por isso ela não informa o endereço remoto.
+1. Use esta versão de server.js, painel.html e bridge.js.
+2. Coloque o arquivo privado conexao.local.json na mesma pasta de server.js.
+3. Feche a versão antiga do programa e abra INICIAR.bat.
+4. Conecte o WhatsApp e clique em Liberar Grok. Reiniciar o programa sempre pausa o controle remoto.
+5. Para trocar a conta, pause e clique em Trocar número. Aguarde o envio atual se necessário; leia o QR Code com a nova conta. Depois libere o Grok novamente.
 
-Depois de publicar, abra skills/disparador-zap/SKILL.md no GitHub e copie a URL completa. Ela incluirá o proprietário, o repositório e a branch reais. Cole esse link no texto de USAR-NO-GROK.txt.
+A sessão do WhatsApp continua guardada somente no computador. Não publique sessao/, perfil-painel/ nem arquivos *.local.json.
 
-O Grok Bot permite pedir para salvar um procedimento como skill. Um link GitHub fornece o conteúdo de referência, mas não comprova que a skill foi instalada ou que o bot tem acesso ao seu Windows. Se o bot não conseguir ler o link, anexe SKILL.md e os arquivos de código necessários. Repositórios privados exigem acesso autorizado.
+## No Grok Bot
 
-Documentação consultada: https://docs.x.ai/grok-bot/skills-routines-and-automations
-Ambiente do Bot: https://docs.x.ai/grok-bot/overview
+Atualize o repositório com os arquivos deste pacote. Envie grok.local.json somente como arquivo privado ao Bot e peça que leia skills/disparador-zap/SKILL.md e sua referência supabase.md. O Bot pode usar grok-client.js com Node ou fazer POST autenticado à API. Primeiro peça apenas uma consulta de status. Nenhuma mensagem é necessária para testar acesso.
 
-## Validação e limites
+O Grok só deve cadastrar envios com autorização para destinatários, remetente e texto. Cada pedido usa um UUID permanente para evitar duplicação por repetição da chamada.
 
-Este pacote não conecta o Grok Bot ao computador local. O aplicativo usa caminhos de navegador Windows e uma sessão interativa; executar em outro ambiente exige adaptação. Não publique os diretórios sessao e perfil-painel, que podem conter autenticação e dados pessoais.
+## O que já funciona e os limites
 
-Nenhuma mensagem foi enviada na preparação do pacote. Não foi adicionada licença de redistribuição; o proprietário pode escolher uma antes de disponibilizar o código a terceiros.
+- Fila remota, autenticação separada, estado do dispositivo, cancelamento de pedidos ainda pendentes.
+- Pedidos vinculados ao número remetente. Trocar de conta cancela os pedidos pendentes de outro remetente na próxima consulta do worker.
+- O worker consulta a cada 5 segundos e aguarda 15 segundos após uma tentativa concluída.
+- Falhas incertas não são reenviadas automaticamente. Se o processo cair durante um pedido running, confira o WhatsApp e resolva o registro no banco antes de continuar. Esse bloqueio evita duplicação.
+- A fila expira pedidos em uma hora; pedidos expirados não são executados, mesmo que ainda apareçam queued no histórico.
+- O PC precisa ficar ligado. Supabase hospeda a fila/API, não o navegador WhatsApp. Um worker em hospedagem separada ainda não foi implantado.
+- O Bot precisa de acesso a terminal/HTTP e armazenamento privado. Ler a skill não comprova essas capacidades.
+
+## Validação
+
+Execute `node --test tests/bridge.test.js`. Foram testados bloqueio por remetente, pausa inicial, resposta incerta e falha ao registrar confirmação sem reenviar. A API publicada foi testada por status e rejeição de chamadas sem credencial ou com função incorreta. Nenhum envio real foi realizado; a troca de conta por QR depende da verificação no navegador do usuário.
+
+## Banco e manutenção
+
+supabase/schema.sql registra o esquema inicial, já aplicado neste projeto. Não rode novamente no mesmo banco. A função está em supabase/functions/zap-bridge/index.ts. Para revogar acesso, desative enabled no registro do dispositivo. Para trocar tokens, gere segredos aleatórios novos, atualize seus hashes SHA-256 no banco e entregue os arquivos privados correspondentes. Nunca publique service_role.
+
+O Security Advisor retornou apenas o aviso informativo RLS Enabled No Policy nas duas tabelas. É intencional: elas negam acesso direto e são usadas pelo backend autenticado.
+https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy
+
+Referências: https://supabase.com/docs/guides/functions/auth-headers e https://wppconnect.io/wa-js/functions/conn.getMyUserId.html

@@ -5,6 +5,12 @@ description: Preparar, instalar, diagnosticar e manter o projeto Disparador Zap,
 
 # Disparador Zap
 
+Suporta até três contas simultâneas em processos Windows separados. Para coordenar as contas 1, 2 e 3 pelo Grok, use grok-client.js, accounts.js e o arquivo privado grok-3-contas.local.json conforme a referência abaixo. Nunca escolha outra conta como fallback de envio.
+
+## Controle pelo Supabase (versão com bridge.js)
+
+Para operar a integração remota, leia [references/supabase.md](references/supabase.md). O usuário fornece `grok.local.json` por um canal privado; nunca grave esse arquivo no GitHub nem imprima o token. O Grok usa HTTPS para registrar pedidos; o worker Windows faz os envios. A API não executa navegador na nuvem. Um endereço de repositório sozinho não instala a integração no Bot.
+
 ## Entradas e acesso
 
 Receba a URL real do repositório e a tarefa desejada. Leia os arquivos na revisão acessível; não invente proprietário, branch ou resultado de execução. Se privado, solicite acesso pela integração do bot, nunca credenciais em mensagens. Localize a raiz por package.json com name disparador-zap e server.js.
