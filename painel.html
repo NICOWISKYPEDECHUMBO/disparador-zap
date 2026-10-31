@@ -39,6 +39,7 @@
   <div id="conta">Conta: aguardando conexão</div>
   <div id="remoto">Grok: não configurado</div>
   <div id="acompanhamento">Respostas: aguardando</div>
+  <div id="verificacoes"></div>
   <small>Contatos novos são salvos somente no WhatsApp, sem sincronizar com a agenda.</small>
   <button id="encerrar" style="background:#555;margin-top:8px">Encerrar esta conta</button>
   <div class="botoes">
@@ -129,6 +130,8 @@ async function atualizar() {
     $('conta').textContent = 'Conta ' + (s.conta || '1') + ': ' + (s.remetente || 'desconectada');
     $('remoto').textContent = 'Grok: ' + s.remoto;
     $('acompanhamento').textContent = 'Respostas: ' + (s.acompanhamento || 'reinicie para atualizar') + (s.segundoPlano ? ' (segundo plano)' : '');
+    const hora = value => value ? new Date(value).toLocaleTimeString('pt-BR') : 'aguardando';
+    $('verificacoes').textContent = 'Última verificação: ' + hora(s.ultimaVerificacao) + ' · Próxima: ' + hora(s.proximaVerificacao);
     const selo = $('selo');
     selo.className = 'selo ' + s.whatsapp;
     selo.textContent = { iniciando: 'Abrindo WhatsApp...', qrcode: 'Leia o QR code', pronto: 'Conectado' }[s.whatsapp];

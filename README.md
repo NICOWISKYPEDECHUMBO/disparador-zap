@@ -2,6 +2,8 @@
 
 ## Contatos e respostas — atualização
 
+Correção do monitor: leitura por telefone com fallback LID, falhas isoladas por conversa e consulta automática a cada cinco minutos após a primeira varredura conectada. O painel mostra última e próxima verificação. Reinicie o programa após substituir os arquivos para ativar a correção.
+
 Novas campanhas pelo Grok usam save_contact:true e contact_name. O worker salva contatos novos exclusivamente no WhatsApp, sem sincronizar com a agenda do telefone; contatos existentes são preservados. O painel local também aplica essa regra. O userscript independente não foi alterado e não oferece esse acompanhamento.
 
 Respostas de texto e legendas dos destinatários de campanhas pelo Grok são sincronizadas no Supabase; mídia não é baixada. O Grok consulta action replies com account e cursor after. Veja skills/disparador-zap/references/respostas.md para limites, retenção e instruções. Envios feitos apenas pelo painel local não geram registros zap_jobs, portanto não entram automaticamente no monitor de campanhas.

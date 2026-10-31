@@ -3,7 +3,7 @@ const assert=require('node:assert/strict');
 const vm=require('node:vm');
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 const {sendText,readReplies}=require('../whatsapp-ops');
-const {createReplyMonitor}=require('../replies');
+const {createReplyMonitor,createMonitorScheduler}=require('../replies');
 const sender='5511000000000';
 function browser(WPP,fn,...args) {const ctx=vm.createContext({WPP,args});return vm.runInContext(`(${fn.toString()})(...args)`,ctx);}
 test('saves only in WhatsApp before sending; preserves existing contacts',async()=>{
@@ -34,6 +34,23 @@ test('failed reply upload does not advance disk cursor; retry persists it',async
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'zap-monitor-'));const file=path.join(dir,'cursor.json');
   let fail=true;const calls=[];
   const monitor=createReplyMonitor({file,getSender:async()=>sender,report:()=>{},read:async()=>({truncated:false,replies:[{message_id:'x',received_at:'2026-10-31T00:01:00Z',text:'a',type:'chat'}]}),api:async b=>{calls.push(b);if(b.action==='targets')return {targets:[{recipient:'5521000000000',since:'2026-10-31T00:00:00Z'}],truncated:false};if(b.action==='incoming'&&fail)throw Error('offline');return {};}});
-  await assert.rejects(monitor.tick());assert.equal(fs.existsSync(file),false);fail=false;await monitor.tick();assert.equal(fs.existsSync(file),true);assert.equal(calls.at(-1).action,'monitor');
+  assert.equal((await monitor.tick()).failures,1);assert.equal(fs.existsSync(file),false);fail=false;await monitor.tick();assert.equal(fs.existsSync(file),true);assert.equal(calls.at(-1).action,'monitor');
   fs.unlinkSync(file);fs.rmdirSync(dir);
+});
+test('missing phone-number chat resolves to LID without sending',async()=>{
+  const seen=[];
+  const WPP={conn:{getMyUserId:()=>({_serialized:sender+'@c.us'})},contact:{getPnLidEntry:async()=>({lid:{_serialized:'12345@lid'}})},chat:{getMessages:async id=>{seen.push(id);if(id.endsWith('@c.us'))throw Error('Chat not found');return [{id:'false_r',t:300,type:'chat',body:'reply'}];}}};
+  const result=await browser(WPP,readReplies,{recipient:'5521000000000',since:new Date(200000).toISOString()},sender);
+  assert.deepEqual(seen,['5521000000000@c.us','12345@lid']);assert.equal(result.replies.length,1);
+});
+test('one missing conversation does not stop remaining campaign targets',async()=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'zap-monitor-'));let reads=0,complete;
+  const monitor=createReplyMonitor({file:path.join(dir,'cursor.json'),getSender:async()=>sender,report:()=>{},read:async()=>{reads++;if(reads===1)throw Error('missing');return {replies:[],truncated:false};},api:async b=>{if(b.action==='targets')return {targets:[{recipient:'a',since:'2026-01-01'},{recipient:'b',since:'2026-01-01'}]};if(b.action==='monitor')complete=b.complete;return {};}});
+  const result=await monitor.tick();assert.equal(reads,2);assert.equal(result.failures,1);assert.equal(complete,false);fs.rmdirSync(dir);
+});
+test('scan immediately on login then every five minutes, no duplicate concurrent scan',async()=>{
+  let time=0,count=0,online=false;const updates=[];
+  const tick=createMonitorScheduler({monitor:{tick:async()=>{count++;return {};}},connected:async()=>online,update:x=>updates.push(x),now:()=>time});
+  await tick();assert.equal(count,0);online=true;await Promise.all([tick(),tick()]);assert.equal(count,1);
+  time=299999;await tick();assert.equal(count,1);time=300000;await tick();assert.equal(count,2);
 });

@@ -8,6 +8,8 @@ Pedidos anteriores à atualização mantêm save_contact false. Não recrie pedi
 
 ## Consultar respostas
 
+O worker faz a primeira varredura após conectar e agenda as próximas cinco minutos após cada varredura. O painel mostra última/próxima verificação. Falhas de uma conversa não interrompem as outras: monitor_complete false pode indicar captura parcial, não ausência de respostas. A leitura tenta também o identificador LID do WhatsApp quando a conversa não é encontrada pelo telefone. Consulte replies mesmo quando a captura for parcial e informe a limitação.
+
 Use o mesmo grok-client.js e a configuração privada das três contas. Exemplo de arquivo JSON:
 
 `{"action":"replies","account":1,"after":"0"}`

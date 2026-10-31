@@ -5,7 +5,7 @@ const { spawn } = require('child_process');
 const puppeteer = require('puppeteer-core');
 const { createBridge, loadConfig } = require('./bridge');
 const { sendText, readReplies } = require('./whatsapp-ops');
-const { createReplyMonitor } = require('./replies');
+const { createReplyMonitor, createMonitorScheduler } = require('./replies');
 const BACKGROUND = process.env.ZAP_HEADLESS === '1';
 let whatsappBrowser = null;
 let bridge = null;
@@ -41,6 +41,9 @@ const estado = {
   conta: ACCOUNT.account,
   segundoPlano: BACKGROUND,
   acompanhamento: 'aguardando',
+  ultimaVerificacao: null,
+  proximaVerificacao: null,
+  erroVerificacao: null,
 };
 
 function log(texto, tipo = 'info') {
@@ -266,7 +269,18 @@ servidor.listen(PORTA, '127.0.0.1', () => {
         file: path.join(__dirname, `respostas-${ACCOUNT.account}.local.json`),
         report: message => { estado.acompanhamento = message; }
       });
-      setInterval(()=>monitor.tick().catch(()=>{estado.acompanhamento='Falha na sincronizacao; tentando novamente';}),30000);
+      const checkMonitor = createMonitorScheduler({ monitor,
+        connected: async () => !!await remetenteAtual(),
+        update: info => {
+          if (info.running) estado.acompanhamento = 'Verificando respostas...';
+          if (info.last) estado.ultimaVerificacao = info.last;
+          if (info.next) estado.proximaVerificacao = info.next;
+          if ('error' in info) estado.erroVerificacao = info.error;
+          if (info.error) { estado.acompanhamento = 'Erro na verificacao; nova tentativa em 5 minutos'; log('Monitor: ' + info.error,'erro'); }
+        }
+      });
+      // First scan after authentication, then five minutes after each completed scan.
+      setInterval(()=>checkMonitor().catch(e=>log('Monitor indisponivel: '+e.message,'erro')),5000);
     }
   } catch (e) { log(e.message, 'erro'); }
   console.log(`Painel em http://localhost:${PORTA}`);

@@ -28,8 +28,19 @@ async function readReplies(target, expected) {
   const replies = [];
   let before;
   let truncated = false;
+  let chatId = target.recipient + '@c.us';
   for (let page = 0; page < 10; page++) {
-    const rows = await WPP.chat.getMessages(target.recipient + '@c.us', { count: 100, ...(before ? { id: before, direction: 'before' } : {}) });
+    const options = { count: 100, ...(before ? { id: before, direction: 'before' } : {}) };
+    let rows;
+    try { rows = await WPP.chat.getMessages(chatId, options); }
+    catch (error) {
+      if (page !== 0 || !String(error.message).includes('Chat not found') || typeof WPP.contact?.getPnLidEntry !== 'function') throw error;
+      const mapping = await WPP.contact.getPnLidEntry(chatId);
+      const alternative = mapping?.lid?._serialized;
+      if (!alternative || !/^\d+@lid$/.test(alternative)) throw error;
+      chatId = alternative;
+      rows = await WPP.chat.getMessages(chatId, options);
+    }
     if (current() !== expected) throw new Error('Remetente alterado');
     if (!rows.length) break;
     let oldest = Infinity, oldestId;
