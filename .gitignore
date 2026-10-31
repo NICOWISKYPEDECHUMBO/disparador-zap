@@ -1,0 +1,9 @@
+node_modules/
+runtime/
+sessao/
+perfil-painel/
+.env
+.env.*
+*.log
+contatos*.csv
+contatos*.txt

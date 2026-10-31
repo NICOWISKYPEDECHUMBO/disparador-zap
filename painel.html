@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Disparador Zap</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: 'Segoe UI', sans-serif; background: #eae6df; color: #111; }
+  header { background: #075e54; color: #fff; padding: 14px 18px; display: flex; justify-content: space-between; align-items: center; }
+  header h1 { font-size: 18px; margin: 0; }
+  .selo { font-size: 12px; padding: 4px 10px; border-radius: 20px; background: #888; }
+  .selo.pronto { background: #25d366; }
+  .selo.qrcode { background: #f9a825; }
+  main { padding: 14px 18px; }
+  label { display: flex; justify-content: space-between; font-size: 13px; font-weight: 600; margin: 10px 0 4px; }
+  textarea, input { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 8px; font: inherit; font-size: 14px; background: #fff; }
+  textarea { resize: vertical; }
+  .linha { display: flex; gap: 10px; }
+  .link { color: #075e54; cursor: pointer; font-weight: 600; }
+  .botoes { display: flex; gap: 10px; margin: 14px 0; }
+  button { flex: 1; padding: 12px; border: 0; border-radius: 8px; color: #fff; font-size: 15px; font-weight: 700; cursor: pointer; }
+  button:disabled { opacity: .45; cursor: default; }
+  #disparar { background: #25d366; }
+  #parar { background: #e53935; }
+  .barra { height: 10px; background: #fff; border-radius: 6px; overflow: hidden; }
+  .barra div { height: 100%; width: 0; background: #25d366; transition: width .3s; }
+  #status { font-size: 13px; margin: 6px 0 10px; font-weight: 600; }
+  #log { height: 200px; overflow-y: auto; background: #fff; border-radius: 8px; padding: 8px; font: 12px Consolas, monospace; }
+  #log .ok { color: #2e7d32; } #log .erro { color: #c62828; }
+  small { color: #555; }
+</style>
+</head>
+<body>
+<header>
+  <h1>📲 Disparador Zap</h1>
+  <span id="selo" class="selo">Abrindo WhatsApp...</span>
+</header>
+<main>
+  <label>Números <span><span class="link" id="importar">Importar .txt/.csv</span> · <span id="contagem">0</span></span></label>
+  <textarea id="numeros" rows="7" placeholder="Um por linha. Opcional: numero;nome&#10;11999998888;João&#10;5521988887777;Maria"></textarea>
+  <input type="file" id="arquivo" accept=".txt,.csv" hidden>
+
+  <label>Mensagem <small>use {nome} para o nome</small></label>
+  <textarea id="mensagem" rows="6" placeholder="Olá {nome}, tudo bem?"></textarea>
+
+  <label>Intervalo entre envios (segundos)</label>
+  <div class="linha">
+    <input id="min" type="number" min="1" value="15" title="mínimo">
+    <input id="max" type="number" min="1" value="40" title="máximo">
+  </div>
+
+  <div class="botoes">
+    <button id="disparar" disabled>▶ Disparar</button>
+    <button id="parar" disabled>■ Parar</button>
+  </div>
+
+  <div class="barra"><div id="progresso"></div></div>
+  <div id="status">Aguardando...</div>
+  <div id="log"></div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const campos = ['numeros', 'mensagem', 'min', 'max'];
+
+// Lembra o que foi digitado
+campos.forEach((c) => {
+  try { const v = localStorage.getItem('zap_' + c); if (v !== null) $(c).value = v; } catch {}
+  $(c).addEventListener('input', () => { try { localStorage.setItem('zap_' + c, $(c).value); } catch {} contar(); });
+});
+
+function lerLista() {
+  return $('numeros').value.split('\n').map((l) => l.trim()).filter(Boolean).map((l) => {
+    const [num, nome = ''] = l.split(/[;,\t]/);
+    return { num, nome };
+  }).filter((c) => /\d{10,}/.test(c.num.replace(/\D/g, '')));
+}
+function contar() { $('contagem').textContent = lerLista().length + ' válidos'; }
+contar();
+
+$('importar').onclick = () => $('arquivo').click();
+$('arquivo').onchange = async (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const texto = await f.text();
+  $('numeros').value = ($('numeros').value.trim() + '\n' + texto).trim();
+  $('numeros').dispatchEvent(new Event('input'));
+  e.target.value = '';
+};
+
+async function post(url, corpo) {
+  const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corpo || {}) });
+  const j = await r.json();
+  if (j.erro) alert(j.erro);
+}
+
+$('disparar').onclick = () => {
+  const lista = lerLista();
+  if (!lista.length) return alert('Coloque pelo menos um número.');
+  if (!$('mensagem').value.trim()) return alert('Escreva a mensagem.');
+  if (!confirm(`Enviar para ${lista.length} contato(s)?`)) return;
+  post('/disparar', { lista, mensagem: $('mensagem').value, min: $('min').value, max: $('max').value });
+};
+$('parar').onclick = () => post('/parar');
+
+let ultimoLog = 0;
+async function atualizar() {
+  try {
+    const s = await (await fetch('/estado')).json();
+    const selo = $('selo');
+    selo.className = 'selo ' + s.whatsapp;
+    selo.textContent = { iniciando: 'Abrindo WhatsApp...', qrcode: 'Leia o QR code', pronto: 'Conectado' }[s.whatsapp];
+
+    $('disparar').disabled = s.whatsapp !== 'pronto' || s.rodando;
+    $('parar').disabled = !s.rodando;
+    $('progresso').style.width = s.total ? (100 * (s.ok + s.falha) / s.total) + '%' : '0';
+    $('status').textContent = s.rodando
+      ? `Enviando ${s.atual}/${s.total} — ✅ ${s.ok}  ❌ ${s.falha}` + (s.espera ? ` — próximo em ${s.espera}s` : '')
+      : s.total ? `Último disparo: ✅ ${s.ok}  ❌ ${s.falha} de ${s.total}` : 'Aguardando...';
+
+    if (s.log.length !== ultimoLog) {
+      const box = $('log');
+      box.replaceChildren(...s.log.map((l) => {
+        const d = document.createElement('div');
+        d.className = l.tipo;
+        d.textContent = `[${l.hora}] ${l.texto}`;
+        return d;
+      }));
+      box.scrollTop = box.scrollHeight;
+      ultimoLog = s.log.length;
+    }
+  } catch {
+    $('selo').textContent = 'Programa fechado';
+    $('selo').className = 'selo';
+    $('disparar').disabled = $('parar').disabled = true;
+  }
+}
+setInterval(atualizar, 1000);
+atualizar();
+</script>
+</body>
+</html>

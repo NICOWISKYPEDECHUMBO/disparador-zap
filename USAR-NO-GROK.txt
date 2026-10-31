@@ -1,0 +1,3 @@
+Leia o arquivo SKILL.md neste link: COLE_AQUI_O_LINK_REAL_DO_ARQUIVO_NO_GITHUB
+
+Use esse documento e os arquivos do mesmo repositório para salvar uma skill privada chamada disparador-zap. Preserve os requisitos Windows, o servidor local em 127.0.0.1:3210, a proteção das pastas de sessão e a autorização explícita para envios. Confirme quais arquivos conseguiu ler e se a skill foi realmente salva. Se não tiver acesso ao repositório, peça os arquivos ou a conexão necessária, sem inventar seu conteúdo. Primeiro prepare ou diagnostique o projeto; não envie mensagens como teste. Informe se seu ambiente consegue executar este aplicativo Windows ou se a execução deve ocorrer no meu computador.
