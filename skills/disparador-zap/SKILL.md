@@ -5,6 +5,8 @@ description: Preparar, instalar, diagnosticar e manter o projeto Disparador Zap,
 
 # Disparador Zap
 
+Para salvar destinatários somente no WhatsApp, acompanhar respostas e usar o PC em segundo plano, leia [references/respostas.md](references/respostas.md). A captura roda no worker; o Grok consulta a API. Não confunda captura contínua com uma rotina de consulta já instalada no Grok.
+
 Suporta até três contas simultâneas em processos Windows separados. Para coordenar as contas 1, 2 e 3 pelo Grok, use grok-client.js, accounts.js e o arquivo privado grok-3-contas.local.json conforme a referência abaixo. Nunca escolha outra conta como fallback de envio.
 
 ## Controle pelo Supabase (versão com bridge.js)

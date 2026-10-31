@@ -1,5 +1,15 @@
 # Disparador Zap — Supabase e Grok
 
+## Contatos e respostas — atualização
+
+Novas campanhas pelo Grok usam save_contact:true e contact_name. O worker salva contatos novos exclusivamente no WhatsApp, sem sincronizar com a agenda do telefone; contatos existentes são preservados. O painel local também aplica essa regra. O userscript independente não foi alterado e não oferece esse acompanhamento.
+
+Respostas de texto e legendas dos destinatários de campanhas pelo Grok são sincronizadas no Supabase; mídia não é baixada. O Grok consulta action replies com account e cursor after. Veja skills/disparador-zap/references/respostas.md para limites, retenção e instruções. Envios feitos apenas pelo painel local não geram registros zap_jobs, portanto não entram automaticamente no monitor de campanhas.
+
+Para rodar sem janela: após conectar normalmente, encerre a conta pelo painel e abra SEGUNDO-PLANO-1.bat (ou 2/3). O PC deve ficar ligado, com internet e sem suspensão. O painel fica disponível em localhost:3210/3211/3212, mas não abre sozinho. Abra-o manualmente para liberar os envios; a captura de respostas independe dessa liberação. Para encerrar o worker, use Encerrar esta conta. Fechar somente a aba do painel não encerra o processo headless.
+
+O Supabase e a skill fornecem consultas; o usuário ainda precisa atualizar a skill no Grok e solicitar uma rotina se quiser consultas automáticas. Nenhum atendimento automático a clientes foi ativado. A migração adicional está documentada em supabase/replies-schema.sql e já foi aplicada neste projeto; não rode outra vez.
+
 ## Três contas
 
 Abra CONTA-1.bat, CONTA-2.bat e CONTA-3.bat para iniciar as contas desejadas. Cada conta abre seu próprio WhatsApp e painel: portas 3210, 3211 e 3212. A conta 1 mantém a sessão existente. Leia o QR Code das outras contas com os respectivos celulares. Libere o Grok separadamente em cada painel. Não use o mesmo número em mais de uma conta.

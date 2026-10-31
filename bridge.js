@@ -24,7 +24,7 @@ function createBridge({ config, getSender, available, send, report, fetchImpl = 
       let detail = 'Envio pausado ou remetente alterado';
       if (!paused && available() && await getSender() === job.sender) {
         try {
-          await send(job.recipient, job.message, job.sender);
+          await send(job.recipient, job.message, job.sender, job.contact_name, job.save_contact);
           status = 'sent'; detail = 'Confirmado pelo WA-JS';
         } catch {
           status = 'uncertain'; detail = 'Falha durante envio; conferir no WhatsApp antes de repetir';
@@ -37,6 +37,7 @@ function createBridge({ config, getSender, available, send, report, fetchImpl = 
     } finally { busy = false; }
   }
   return {
+    api,
     tick,
     pause: () => { paused = true; },
     enable: () => { paused = false; },

@@ -38,6 +38,9 @@
 <main>
   <div id="conta">Conta: aguardando conexão</div>
   <div id="remoto">Grok: não configurado</div>
+  <div id="acompanhamento">Respostas: aguardando</div>
+  <small>Contatos novos são salvos somente no WhatsApp, sem sincronizar com a agenda.</small>
+  <button id="encerrar" style="background:#555;margin-top:8px">Encerrar esta conta</button>
   <div class="botoes">
     <button id="ativar-remoto" style="background:#075e54">Liberar Grok</button>
     <button id="pausar-remoto" style="background:#666">Pausar Grok</button>
@@ -112,6 +115,7 @@ $('ativar-remoto').onclick = () => {
   if (confirm('Liberar pedidos autorizados enviados pelo Grok para esta conta?')) post('/remoto/ativar');
 };
 $('pausar-remoto').onclick = () => post('/remoto/pausar');
+$('encerrar').onclick = () => { if(confirm('Encerrar o programa desta conta? O acompanhamento de respostas vai parar.')) post('/encerrar'); };
 $('trocar-numero').onclick = () => {
   if (confirm('Pausar o Grok e sair da conta atual? Depois leia o QR Code com o novo número.')) post('/trocar-numero');
 };
@@ -124,6 +128,7 @@ async function atualizar() {
     document.querySelector('header h1').textContent = 'Disparador Zap — Conta ' + (s.conta || '1');
     $('conta').textContent = 'Conta ' + (s.conta || '1') + ': ' + (s.remetente || 'desconectada');
     $('remoto').textContent = 'Grok: ' + s.remoto;
+    $('acompanhamento').textContent = 'Respostas: ' + (s.acompanhamento || 'reinicie para atualizar') + (s.segundoPlano ? ' (segundo plano)' : '');
     const selo = $('selo');
     selo.className = 'selo ' + s.whatsapp;
     selo.textContent = { iniciando: 'Abrindo WhatsApp...', qrcode: 'Leia o QR code', pronto: 'Conectado' }[s.whatsapp];

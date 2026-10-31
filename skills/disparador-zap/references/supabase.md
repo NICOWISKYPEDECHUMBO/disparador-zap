@@ -26,6 +26,8 @@ Alternativamente, POST na URL contida no arquivo privado, com Content-Type appli
 
 ## Ações
 
+Além das ações abaixo, a versão de acompanhamento aceita replies e os campos save_contact/contact_name em enqueue. Leia [respostas.md](respostas.md) antes de preparar novas campanhas e consultas de respostas.
+
 - Consultar: `{"action":"status"}`. Confira device.sender e last_seen, além do status dos pedidos. Um heartbeat recente significa que o worker alcança a API, não necessariamente que o controle esteja liberado.
 - Enviar: action enqueue; id UUID novo; sender número remetente com DDI; recipient destinatário com DDI; message texto final; authorized true. Exija autorização do usuário para os destinatários, texto e remetente. A flag representa essa autorização, não a substitui. Para personalizar, resolva {nome} antes de criar cada pedido.
 - Cancelar um pedido ainda na fila: action cancel e id UUID. Uma lista vazia significa que nada foi cancelado. Um envio running não pode ser desfeito por essa ação.

@@ -4,6 +4,10 @@ const path = require('path');
 const { spawn } = require('child_process');
 const puppeteer = require('puppeteer-core');
 const { createBridge, loadConfig } = require('./bridge');
+const { sendText, readReplies } = require('./whatsapp-ops');
+const { createReplyMonitor } = require('./replies');
+const BACKGROUND = process.env.ZAP_HEADLESS === '1';
+let whatsappBrowser = null;
 let bridge = null;
 let remotoEnviando = false;
 let localEnviando = false;
@@ -35,6 +39,8 @@ const estado = {
   remetente: null,
   remoto: 'nao_configurado',
   conta: ACCOUNT.account,
+  segundoPlano: BACKGROUND,
+  acompanhamento: 'aguardando',
 };
 
 function log(texto, tipo = 'info') {
@@ -56,12 +62,13 @@ function normalizar(n) {
 async function abrirWhatsApp() {
   const browser = await puppeteer.launch({
     executablePath: CHROME,
-    headless: false,
+    headless: BACKGROUND,
     defaultViewport: null,
     userDataDir: path.join(__dirname, ACCOUNT.session),
     args: ['--start-maximized', '--disable-blink-features=AutomationControlled'],
     ignoreDefaultArgs: ['--enable-automation'],
   });
+  whatsappBrowser = browser;
   browser.on('disconnected', () => {
     console.log('Navegador fechado. Encerrando.');
     process.exit(0);
@@ -107,23 +114,8 @@ async function remetenteAtual() {
   } catch { return null; }
 }
 
-async function enviar(numero, mensagem, remetente) {
-  return page.evaluate(
-    async (num, msg, esperado) => {
-      const atual = () => {
-        const id = WPP.conn.getMyUserId();
-        return (id?._serialized || id?.toString() || '').split('@')[0];
-      };
-      if (!esperado || atual() !== esperado) throw new Error('Remetente alterado');
-      const existe = await WPP.contact.queryExists(num + '@c.us');
-      if (!existe) throw new Error('número não tem WhatsApp');
-      if (atual() !== esperado) throw new Error('Remetente alterado');
-      await WPP.chat.sendTextMessage(existe.wid._serialized, msg, { createChat: true });
-    },
-    numero,
-    mensagem,
-    remetente
-  );
+async function enviar(numero, mensagem, remetente, nome = '', salvar = false) {
+  return page.evaluate(sendText, numero, mensagem, remetente, nome, salvar);
 }
 
 async function disparar({ lista, mensagem, min, max }) {
@@ -144,7 +136,7 @@ async function disparar({ lista, mensagem, min, max }) {
     try {
       if (await remetenteAtual() !== remetente) { estado.rodando = false; break; }
       localEnviando = true;
-      try { await enviar(num, mensagem.replace(/\{nome\}/gi, nome), remetente); }
+      try { await enviar(num, mensagem.replace(/\{nome\}/gi, nome), remetente, nome, true); }
       finally { localEnviando = false; }
       estado.ok++;
       log(`✅ ${num}${nome ? ' (' + nome + ')' : ''} enviado`, 'ok');
@@ -195,6 +187,14 @@ const servidor = http.createServer(async (req, res) => {
     estado.remetente = await remetenteAtual();
     estado.remoto = bridge ? (bridge.paused ? 'pausado' : 'liberado') : 'nao_configurado';
     return json(estado);
+  }
+  if (req.method === 'POST' && req.url === '/encerrar') {
+    bridge?.pause();
+    estado.rodando = false;
+    if (localEnviando || remotoEnviando || bridge?.busy) return json({erro:'Aguarde a operacao atual terminar e tente novamente.'},409);
+    json({ok:true});
+    setTimeout(async()=>{ await whatsappBrowser?.close(); process.exit(0); },300);
+    return;
   }
   if (req.method === 'POST' && req.url === '/remoto/ativar') {
     if (!bridge) return json({erro:'Copie conexao.local.json para a pasta do programa.'},400);
@@ -255,17 +255,23 @@ servidor.listen(PORTA, '127.0.0.1', () => {
     if (config) {
       bridge = createBridge({ config, getSender: remetenteAtual,
         available: () => !estado.rodando && !localEnviando && !remotoEnviando && !trocando && estado.whatsapp === 'pronto',
-        send: async (num, msg, sender) => {
+        send: async (num, msg, sender, name, saveContact) => {
           remotoEnviando = true;
-          try { await enviar(num, msg, sender); } finally { remotoEnviando = false; }
+          try { await enviar(num, msg, sender, name, saveContact); } finally { remotoEnviando = false; }
         }, report: texto => log(texto)
       });
       bridge.run();
+      const monitor = createReplyMonitor({ api: bridge.api, getSender: remetenteAtual,
+        read: (target,sender) => page.evaluate(readReplies,target,sender),
+        file: path.join(__dirname, `respostas-${ACCOUNT.account}.local.json`),
+        report: message => { estado.acompanhamento = message; }
+      });
+      setInterval(()=>monitor.tick().catch(()=>{estado.acompanhamento='Falha na sincronizacao; tentando novamente';}),30000);
     }
   } catch (e) { log(e.message, 'erro'); }
   console.log(`Painel em http://localhost:${PORTA}`);
   // Abre o painel numa janelinha própria, separada do WhatsApp
-  spawn(CHROME, [
+  if (!BACKGROUND) spawn(CHROME, [
     `--app=http://localhost:${PORTA}`,
     `--user-data-dir=${path.join(__dirname, ACCOUNT.panel)}`,
     '--window-size=520,860',
